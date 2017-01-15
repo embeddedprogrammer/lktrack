@@ -1,6 +1,7 @@
 import numpy as np
 
 from scipy import misc
+from scipy import signal
 
 # for image_path in glob.glob("/home/adam/*.png"):
 #     image = misc.imread(image_path)
@@ -28,7 +29,10 @@ def interpolate(img, x, y):
 def cropImg(img, cx, cy, winSize):
     assert winSize % 2 == 1
     border = int((winSize - 1) / 2)
-    newImg = np.zeros((winSize, winSize, img.shape[2]))
+    if len(img.shape) == 3:
+        newImg = np.zeros((winSize, winSize, img.shape[2]))
+    else:
+        newImg = np.zeros((winSize, winSize))
     for y in range(-border, border + 1):
         for x in range(-border, border + 1):
             newImg[border + y, border + x] = interpolate(img, cx + x, cy + y)
@@ -48,7 +52,7 @@ def drawRect(img, x0, x1, y0, y1, c = [255, 0, 0]):
     fillRect(img, x0, x1, y0, y0, c)
     fillRect(img, x0, x1, y1, y1, c)
 
-# Note: scipy.misc.imresize has a wierd rounding problem. This makes
+# Note: scipy.misc.imresize has a weird rounding problem. This makes
 # it not as nice for using 'nearest' interpolation, so we created our
 # own function
 def scale(img, factor):
@@ -78,12 +82,44 @@ def combine(imgs, draw = True):
     else:
         return img
 
-x = int(250*scaleFactor)
-y = int(300*scaleFactor)
+def getGrad(img):
+    scharr = np.array([[-1, 0, 1],
+                       [-2, 0, 2],
+                       [-1, 0, 1]])
+    gradx = signal.convolve2d(img, scharr, mode='same')
+    grady = signal.convolve2d(img, scharr.T, mode='same')
+    return gradx, grady
 
-img1 = cropImg(img, x, y, 21)
-img2 = cropImg(img, x, y + .5, 21)
-combine((showLarge(img1), showLarge(img2)))
+img = img[:, :, 0]
+
+true_x = int(250*scaleFactor)
+true_y = int(300*scaleFactor)
+print "True x: %f, y: %f" %(true_x, true_y)
+
+template = cropImg(img, true_x, true_y, 21)
+x = true_x + 1.0
+y = true_y + 1.0
+print "Start x: %f, y: %f" %(x, y)
+
+# precompute template gradient
+dx, dy = getGrad(template)
+J = np.concatenate((np.reshape(dx, (-1, 1)), np.reshape(dy, (-1, 1))), axis=1)
+
+for i in range(100):
+    # warp image (in this case it is only translating the image)
+    croppedImg = cropImg(img, x, y, 21)
+    err = croppedImg - template
+    err_1d = np.reshape(err, (-1, 1))
+    e = np.linalg.norm(err_1d)
+    dp = np.linalg.lstsq(J, err_1d)[0]
+    x += dp[0]
+    y += dp[1]
+
+    print "Iter %d err: %f x: %f, y: %f" %(i, e, x, y)
+
+#showLarge(diff, draw=True)
+#combine((showLarge(img1), showLarge(img2)))
+
 
 
 
