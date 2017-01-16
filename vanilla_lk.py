@@ -38,10 +38,12 @@ def interpolate(img, x, y):
     p11 = img[iy + 1, ix + 1]
     return (1 - fy)*(1 - fx)*p00 + (1 - fy)*fx*p01 + fy*(1 - fx)*p10 + fy*fx*p11
 
-def cropImg(img, cx, cy, winSize):
+def cropImg(img, cx, cy, winSize, fullSize = False):
     assert winSize % 2 == 1
     border = int((winSize - 1) / 2)
-    if len(img.shape) == 3:
+    if fullSize:
+        newImg = np.zeros_like(img)
+    elif len(img.shape) == 3:
         newImg = np.zeros((winSize, winSize, img.shape[2]))
     else:
         newImg = np.zeros((winSize, winSize))
@@ -94,7 +96,14 @@ def combine(imgs, draw = True):
     else:
         return img
 
-def getGrad(img, method='simple'):
+def getGrad(img, method='cv_scharr'):
+    if method == 'cv_scharr':
+        gradx = cv2.Scharr(img, cv2.CV_64F, 1, 0)
+        grady = cv2.Scharr(img, cv2.CV_64F, 0, 1)
+        print gradx.shape
+        print grady.shape
+        return gradx, grady
+
     if method == 'simple':
         kernel = np.array([[-1, 0, 1]], dtype='float')/2
     elif method == 'sobel':
@@ -104,17 +113,19 @@ def getGrad(img, method='simple'):
     elif method == 'scharr':
         kernel = np.array([[-3, 0, 3],
                            [-10, 0, 10],
-                           [-3, 0, 3]], dtype='float')/32
-    gradx = signal.convolve2d(img, kernel, mode='same')
-    grady = signal.convolve2d(img, kernel.T, mode='same')
+                           [-3, 0, 3]], dtype='float')/32 #Note: The OpenCV scharr function doesn't divide by 32.
+    gradx = signal.convolve2d(img, -kernel, mode='same') #Note: signal and image convolution are inverses, so we must use -kernel
+    grady = signal.convolve2d(img, -kernel.T, mode='same')
     return gradx, grady
 
-def testCV(gray, p0, p1, count = 1, maxLevel = 0, winSize = (21, 21)):
+def testCV(gray, p0, p1, gray2=None, count = 1, maxLevel = 0, winSize = (21, 21)):
+    if gray2 is None:
+        gray2 = gray
     lk_params = dict( winSize = winSize,
                       maxLevel = maxLevel,
                       criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, count, 1e-15),
                       flags = cv2.OPTFLOW_USE_INITIAL_FLOW)
-    p1, st, err = cv2.calcOpticalFlowPyrLK(gray, gray, p0, p1, **lk_params)
+    p1, st, err = cv2.calcOpticalFlowPyrLK(gray, gray2, p0, p1, **lk_params)
     return p1
 
 img = img[:, :, 0]
@@ -131,7 +142,15 @@ y = start_y
 print "Start x: %.3f, y: %.3f" %(x, y)
 
 # precompute template gradient
-dx, dy = getGrad(template)
+dx, dy = getGrad(template, method='scharr')
+# dx2, dy2 = getGrad(template, method='cv_scharr')
+# cv2.imshow('orig', dx)
+# print dy[40, 20:30]*32
+# print dy2[40, 20:30]
+# cv2.waitKey(0)
+# cv2.destroyAllWindows()
+# exit()
+
 J = np.concatenate((np.reshape(dx, (-1, 1)), np.reshape(dy, (-1, 1))), axis=1)
 H_inv = np.linalg.inv(np.matmul(J.T, J))
 #print J
@@ -142,7 +161,7 @@ iterations = 10
 for i in range(iterations):
     # warp image (in this case it is only translating the image)
     croppedImg = cropImg(img, x, y, 21)
-    r = np.reshape(croppedImg - template, (-1, 1))
+    r = np.reshape(template - croppedImg, (-1, 1))
     e = np.linalg.norm(r)
     #dp = np.linalg.lstsq(J, err_1d)[0]
     deltaX = np.matmul(H_inv, np.matmul(J.T, r))
@@ -156,15 +175,18 @@ x = start_x
 y = start_y
 print "\nStart x: %.3f, y: %.3f" %(x, y)
 for i in range(iterations):
+    # warp image (in this case it is only translating the image)
+    gray2 = cropImg(img, x, y, 21, fullSize=True).astype(dtype='uint8')
+
     p0 = np.array([[[true_x, true_y]]], dtype='float32')
-    p1 = np.array([[[x, y]]]).astype(dtype='float32')
-    p2 = testCV(img, p0, p1)
-    x = p2[0, 0, 0]
-    y = p2[0, 0, 1]
+    p1 = np.array([[[10, 10]]]).astype(dtype='float32')
+    p2 = testCV(img, p0, p1, gray2)
+    x += (p2[0, 0, 0] - 10)
+    y += (p2[0, 0, 1] - 10)
 
     # calc error
     croppedImg = cropImg(img, x, y, 21)
-    r = np.reshape(croppedImg - template, (-1, 1))
+    r = np.reshape(template - croppedImg, (-1, 1))
     e = np.linalg.norm(r)
 
     print "Iter %d err: %.3f   lk: (%.3f, %.3f)" %(i, e, x, y)
