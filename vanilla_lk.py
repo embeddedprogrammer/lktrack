@@ -97,23 +97,24 @@ true_y = int(300*scaleFactor)
 print "True x: %f, y: %f" %(true_x, true_y)
 
 template = cropImg(img, true_x, true_y, 21)
-x = true_x + 1.0
-y = true_y + 1.0
+x = true_x + 0.1
+y = true_y + 0.1
 print "Start x: %f, y: %f" %(x, y)
 
 # precompute template gradient
 dx, dy = getGrad(template)
 J = np.concatenate((np.reshape(dx, (-1, 1)), np.reshape(dy, (-1, 1))), axis=1)
+H_inv = np.linalg.inv(np.matmul(J.T, J))
 
-for i in range(100):
+for i in range(20):
     # warp image (in this case it is only translating the image)
     croppedImg = cropImg(img, x, y, 21)
-    err = croppedImg - template
-    err_1d = np.reshape(err, (-1, 1))
-    e = np.linalg.norm(err_1d)
-    dp = np.linalg.lstsq(J, err_1d)[0]
-    x += dp[0]
-    y += dp[1]
+    r = np.reshape(croppedImg - template, (-1, 1))
+    e = np.linalg.norm(r)
+    #dp = np.linalg.lstsq(J, err_1d)[0]
+    deltaX = np.matmul(H_inv, np.matmul(J.T, r))
+    x += deltaX[0]
+    y += deltaX[1]
 
     print "Iter %d err: %f x: %f, y: %f" %(i, e, x, y)
 
