@@ -1,11 +1,15 @@
+import numpy as np
 import cv2
-img = cv2.imread("imgs/bat.png", cv2.IMREAD_UNCHANGED)
+#img = cv2.imread("imgs/bat.png", cv2.IMREAD_UNCHANGED)
 img = cv2.imread("imgs/forest.jpg")
-cv2.imshow('image', img)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+gray = img[:, :, 0]
 
-exit()
+#cv2.imshow('image', img)
+#cv2.waitKey(0)
+#cv2.destroyAllWindows()
+
+
+
 
 import numpy as np
 from scipy import misc
@@ -98,6 +102,14 @@ def getGrad(img):
     grady = signal.convolve2d(img, scharr.T, mode='same')
     return gradx, grady
 
+def testCV(gray, p0, p1, count = 1, maxLevel = 0, winSize = (21, 21)):
+    lk_params = dict( winSize = winSize,
+                      maxLevel = maxLevel,
+                      criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, count, 1e-9),
+                      flags = cv2.OPTFLOW_USE_INITIAL_FLOW)
+    p1, st, err = cv2.calcOpticalFlowPyrLK(gray, gray, p0, p1, **lk_params)
+    return p1
+
 img = img[:, :, 0]
 
 true_x = int(250*scaleFactor)
@@ -115,16 +127,23 @@ J = np.concatenate((np.reshape(dx, (-1, 1)), np.reshape(dy, (-1, 1))), axis=1)
 H_inv = np.linalg.inv(np.matmul(J.T, J))
 
 for i in range(20):
+    # compare with opencv
+    p0 = np.array([[[true_x, true_y]]], dtype='float32')
+    p1 = np.array([[[x, y]]]).astype(dtype='float32')
+    p2 = testCV(img, p0, p1)
+    cx = p2[0, 0, 0]
+    cy = p2[0, 0, 1]
+
     # warp image (in this case it is only translating the image)
     croppedImg = cropImg(img, x, y, 21)
     r = np.reshape(croppedImg - template, (-1, 1))
     e = np.linalg.norm(r)
     #dp = np.linalg.lstsq(J, err_1d)[0]
     deltaX = np.matmul(H_inv, np.matmul(J.T, r))
-    x += deltaX[0]
-    y += deltaX[1]
+    x += deltaX[0, 0]
+    y += deltaX[1, 0]
 
-    print "Iter %d err: %f x: %f, y: %f" %(i, e, x, y)
+    print "Iter %d err: %f x: %f, y: %f cx: %f, cy: %f" %(i, e, x, y, cx, cy)
 
 #showLarge(diff, draw=True)
 #combine((showLarge(img1), showLarge(img2)))
