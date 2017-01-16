@@ -1,5 +1,13 @@
-import numpy as np
+import cv2
+img = cv2.imread("imgs/bat.png", cv2.IMREAD_UNCHANGED)
+img = cv2.imread("imgs/forest.jpg")
+cv2.imshow('image', img)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
 
+exit()
+
+import numpy as np
 from scipy import misc
 from scipy import signal
 
