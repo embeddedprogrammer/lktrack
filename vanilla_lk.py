@@ -94,18 +94,25 @@ def combine(imgs, draw = True):
     else:
         return img
 
-def getGrad(img):
-    scharr = np.array([[-1, 0, 1],
-                       [-2, 0, 2],
-                       [-1, 0, 1]])
-    gradx = signal.convolve2d(img, scharr, mode='same')
-    grady = signal.convolve2d(img, scharr.T, mode='same')
+def getGrad(img, method='simple'):
+    if method == 'simple':
+        kernel = np.array([[-1, 0, 1]], dtype='float')/2
+    elif method == 'sobel':
+        kernel = np.array([[-1, 0, 1],
+                          [-2, 0, 2],
+                          [-1, 0, 1]], dtype='float')/8
+    elif method == 'scharr':
+        kernel = np.array([[-3, 0, 3],
+                           [-10, 0, 10],
+                           [-3, 0, 3]], dtype='float')/32
+    gradx = signal.convolve2d(img, kernel, mode='same')
+    grady = signal.convolve2d(img, kernel.T, mode='same')
     return gradx, grady
 
 def testCV(gray, p0, p1, count = 1, maxLevel = 0, winSize = (21, 21)):
     lk_params = dict( winSize = winSize,
                       maxLevel = maxLevel,
-                      criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, count, 1e-9),
+                      criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, count, 1e-15),
                       flags = cv2.OPTFLOW_USE_INITIAL_FLOW)
     p1, st, err = cv2.calcOpticalFlowPyrLK(gray, gray, p0, p1, **lk_params)
     return p1
@@ -114,26 +121,25 @@ img = img[:, :, 0]
 
 true_x = int(250*scaleFactor)
 true_y = int(300*scaleFactor)
-print "True x: %f, y: %f" %(true_x, true_y)
+print "True x: %.3f, y: %.3f" %(true_x, true_y)
 
 template = cropImg(img, true_x, true_y, 21)
-x = true_x + 0.1
-y = true_y + 0.1
-print "Start x: %f, y: %f" %(x, y)
+start_x = true_x + 0.
+start_y = true_y + 1.
+x = start_x
+y = start_y
+print "Start x: %.3f, y: %.3f" %(x, y)
 
 # precompute template gradient
 dx, dy = getGrad(template)
 J = np.concatenate((np.reshape(dx, (-1, 1)), np.reshape(dy, (-1, 1))), axis=1)
 H_inv = np.linalg.inv(np.matmul(J.T, J))
+#print J
+#print np.matmul(J.T, J)
+#print H_inv
 
-for i in range(20):
-    # compare with opencv
-    p0 = np.array([[[true_x, true_y]]], dtype='float32')
-    p1 = np.array([[[x, y]]]).astype(dtype='float32')
-    p2 = testCV(img, p0, p1)
-    cx = p2[0, 0, 0]
-    cy = p2[0, 0, 1]
-
+iterations = 10
+for i in range(iterations):
     # warp image (in this case it is only translating the image)
     croppedImg = cropImg(img, x, y, 21)
     r = np.reshape(croppedImg - template, (-1, 1))
@@ -143,7 +149,26 @@ for i in range(20):
     x += deltaX[0, 0]
     y += deltaX[1, 0]
 
-    print "Iter %d err: %f x: %f, y: %f cx: %f, cy: %f" %(i, e, x, y, cx, cy)
+    print "Iter %d err: %.3f   lk: (%.3f, %.3f)" %(i, e, x, y)
+
+# compare with opencv
+x = start_x
+y = start_y
+print "\nStart x: %.3f, y: %.3f" %(x, y)
+for i in range(iterations):
+    p0 = np.array([[[true_x, true_y]]], dtype='float32')
+    p1 = np.array([[[x, y]]]).astype(dtype='float32')
+    p2 = testCV(img, p0, p1)
+    x = p2[0, 0, 0]
+    y = p2[0, 0, 1]
+
+    # calc error
+    croppedImg = cropImg(img, x, y, 21)
+    r = np.reshape(croppedImg - template, (-1, 1))
+    e = np.linalg.norm(r)
+
+    print "Iter %d err: %.3f   lk: (%.3f, %.3f)" %(i, e, x, y)
+
 
 #showLarge(diff, draw=True)
 #combine((showLarge(img1), showLarge(img2)))
