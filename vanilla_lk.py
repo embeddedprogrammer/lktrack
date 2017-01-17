@@ -98,8 +98,8 @@ def combine(imgs, draw = True):
 
 def getGrad(img, method='cv_scharr'):
     if method == 'cv_scharr':
-        gradx = cv2.Scharr(img, cv2.CV_64F, 1, 0)
-        grady = cv2.Scharr(img, cv2.CV_64F, 0, 1)
+        gradx = cv2.Scharr(img, cv2.CV_64F, 1, 0)/32 #Note: The OpenCV scharr function doesn't divide by 32.
+        grady = cv2.Scharr(img, cv2.CV_64F, 0, 1)/32
         print gradx.shape
         print grady.shape
         return gradx, grady
@@ -113,9 +113,19 @@ def getGrad(img, method='cv_scharr'):
     elif method == 'scharr':
         kernel = np.array([[-3, 0, 3],
                            [-10, 0, 10],
-                           [-3, 0, 3]], dtype='float')/32 #Note: The OpenCV scharr function doesn't divide by 32.
+                           [-3, 0, 3]], dtype='float')/32
     gradx = signal.convolve2d(img, -kernel, mode='same') #Note: signal and image convolution are inverses, so we must use -kernel
     grady = signal.convolve2d(img, -kernel.T, mode='same')
+
+    # Set boundaries to zero (these boundaries cause problems later on)
+    gradx[0, :] = 0
+    gradx[-1, :] = 0
+    gradx[:, 0] = 0
+    gradx[:, -1] = 0
+    grady[0, :] = 0
+    grady[-1, :] = 0
+    grady[:, 0] = 0
+    grady[:, -1] = 0
     return gradx, grady
 
 def testCV(gray, p0, p1, gray2=None, count = 1, maxLevel = 0, winSize = (21, 21)):
@@ -143,13 +153,14 @@ print "Start x: %.3f, y: %.3f" %(x, y)
 
 # precompute template gradient
 dx, dy = getGrad(template, method='scharr')
-# dx2, dy2 = getGrad(template, method='cv_scharr')
-# cv2.imshow('orig', dx)
-# print dy[40, 20:30]*32
-# print dy2[40, 20:30]
-# cv2.waitKey(0)
-# cv2.destroyAllWindows()
-# exit()
+#dx2, dy2 = getGrad(template, method='cv_scharr')
+#cv2.imshow('orig', dx)
+#cv2.imshow('opencv', dx2)
+#print (dy == 0).astype(int)
+#print dy2[0]
+#cv2.waitKey(0)
+#cv2.destroyAllWindows()
+#exit()
 
 J = np.concatenate((np.reshape(dx, (-1, 1)), np.reshape(dy, (-1, 1))), axis=1)
 H_inv = np.linalg.inv(np.matmul(J.T, J))
@@ -175,19 +186,17 @@ x = start_x
 y = start_y
 print "\nStart x: %.3f, y: %.3f" %(x, y)
 for i in range(iterations):
-    # warp image (in this case it is only translating the image)
-    gray2 = cropImg(img, x, y, 21, fullSize=True).astype(dtype='uint8')
-
-    p0 = np.array([[[true_x, true_y]]], dtype='float32')
-    p1 = np.array([[[10, 10]]]).astype(dtype='float32')
-    p2 = testCV(img, p0, p1, gray2)
-    x += (p2[0, 0, 0] - 10)
-    y += (p2[0, 0, 1] - 10)
-
     # calc error
     croppedImg = cropImg(img, x, y, 21)
     r = np.reshape(template - croppedImg, (-1, 1))
     e = np.linalg.norm(r)
+
+    # Use OpenCV's function
+    p0 = np.array([[[true_x, true_y]]], dtype='float32')
+    p1 = np.array([[[x, y]]]).astype(dtype='float32')
+    p2 = testCV(img, p0, p1)
+    x = p2[0, 0, 0]
+    y = p2[0, 0, 1]
 
     print "Iter %d err: %.3f   lk: (%.3f, %.3f)" %(i, e, x, y)
 
