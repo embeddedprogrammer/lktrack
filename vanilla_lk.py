@@ -100,8 +100,6 @@ def getGrad(img, method='cv_scharr'):
     if method == 'cv_scharr':
         gradx = cv2.Scharr(img, cv2.CV_64F, 1, 0)/32 #Note: The OpenCV scharr function doesn't divide by 32.
         grady = cv2.Scharr(img, cv2.CV_64F, 0, 1)/32
-        print gradx.shape
-        print grady.shape
         return gradx, grady
 
     if method == 'simple':
@@ -152,7 +150,7 @@ y = start_y
 print "Start x: %.3f, y: %.3f" %(x, y)
 
 # precompute template gradient
-dx, dy = getGrad(template, method='scharr')
+dx, dy = getGrad(template, method='simple')
 #dx2, dy2 = getGrad(template, method='cv_scharr')
 #cv2.imshow('orig', dx)
 #cv2.imshow('opencv', dx2)
