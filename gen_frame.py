@@ -46,9 +46,9 @@ def overlay2(bg, fg, pt_fg, pt_bg, scale):
     img = overlayImg(bg, fg_warped)
     return img
 
-def genTrackAndShow(lktracker, x, y):
+def genTrackAndShow(lktracker, x, y, size):
     # generate next frame
-    img = overlay2(bg, fg, np.array([[fg.shape[1] / 2, fg.shape[0] / 2]], dtype=np.float32), np.array([[x, y]], dtype=np.float32), scale=.3)
+    img = overlay2(bg, fg, np.array([[fg.shape[1] / 2, fg.shape[0] / 2]], dtype=np.float32), np.array([[x, y]], dtype=np.float32), scale=size/fg.shape[0])
 
     # track
     if lktracker is None:
@@ -65,7 +65,8 @@ def genTrackAndShow(lktracker, x, y):
 x = 100.
 y = 100.
 dist = 1.
-lktracker = genTrackAndShow(None, x, y)
+size = 20.
+lktracker = genTrackAndShow(None, x, y, size)
 
 while True:
     key = cv2.waitKey(0) & 0xff
@@ -79,9 +80,13 @@ while True:
         y -= dist
     elif key == key_down:
         y += dist
+    elif key == ord('+'):
+        size += 1
+    elif key == ord('-'):
+        size -= 1
     else:
         print key
-    lktracker = genTrackAndShow(lktracker, x, y)
+    lktracker = genTrackAndShow(lktracker, x, y, size)
 
 cv2.destroyAllWindows()
 

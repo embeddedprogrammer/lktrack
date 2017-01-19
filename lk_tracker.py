@@ -46,11 +46,11 @@ class LK:
 
     @staticmethod
     def drawHatch(img, cx, cy, clr=[0, 0, 255], hatch_size=2):
-        p0 = np.array([cx, cy], dtype=np.float32)
-        p1 = np.array([cx + 10, cy], dtype=np.float32)
-        cv2.line(img, tuple(p0), tuple(p1), (255, 0, 0))
-        img[cy - hatch_size: cy + hatch_size + 1, cx] = np.array(clr)
-        img[cy, cx - hatch_size: cx + hatch_size + 1] = np.array(clr)
+        pt = np.array([cx, cy], dtype=np.float32)
+        down = np.array([hatch_size, 0.], dtype=np.float32)
+        right = np.array([0., hatch_size], dtype=np.float32)
+        cv2.line(img, tuple(pt - down), tuple(pt + down), clr, lineType=cv2.CV_AA)
+        cv2.line(img, tuple(pt + right), tuple(pt - right), clr, lineType=cv2.CV_AA)
 
     @staticmethod
     def fillRect(img, x0, x1, y0, y1, c):
