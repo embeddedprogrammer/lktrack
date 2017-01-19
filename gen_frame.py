@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 import time
-from vanilla_lk import LK
+from lk_tracker import LK
 
 key_esc = 27
 key_esc = 27
@@ -46,13 +46,26 @@ def overlay2(bg, fg, pt_fg, pt_bg, scale):
     img = overlayImg(bg, fg_warped)
     return img
 
-def process(x, y):
+def genTrackAndShow(lktracker, x, y):
+    # generate next frame
     img = overlay2(bg, fg, np.array([[fg.shape[1] / 2, fg.shape[0] / 2]], dtype=np.float32), np.array([[x, y]], dtype=np.float32), scale=.3)
-    cv2.imshow('image', img)
+
+    # track
+    if lktracker is None:
+        lktracker = LK(img, x, y, method='opencv')
+    else:
+        lktracker.track(img)
+
+        # display image
+        disp = np.copy(img)
+        lktracker.drawHatch(disp, lktracker.x, lktracker.y, hatch_size=20)
+        cv2.imshow('image', disp)
+    return lktracker
 
 x = 100.
 y = 100.
-dist = 10.
+dist = 1.
+lktracker = genTrackAndShow(None, x, y)
 
 while True:
     key = cv2.waitKey(0) & 0xff
@@ -68,7 +81,7 @@ while True:
         y += dist
     else:
         print key
-    drawBgFg(x, y)
+    lktracker = genTrackAndShow(lktracker, x, y)
 
 cv2.destroyAllWindows()
 

@@ -1,15 +1,21 @@
 import numpy as np
 import cv2
 
+from scipy import misc
+from scipy import signal
+
+
 class LK:
-    def __init__(self, method='custom', gradientMethod='scharr', winSize=21, count=10, err=1e-4, maxLevel=0):
+    def __init__(self, img, x, y, method='custom', gradientMethod='scharr', winSize=21, count=10, err=1e-4, maxLevel=0):
+        self.lastImg = img
+        self.x = x
+        self.y = y
         self.method = method
         self.gradientMethod = gradientMethod
         self.count = count
         self.err = err
         self.winSize = winSize
         self.maxLevel = maxLevel
-        self.lastImg = None
 
     @staticmethod
     def interpolate(img, x, y):
@@ -39,9 +45,12 @@ class LK:
         return newImg
 
     @staticmethod
-    def drawHatch(img, cx, cy, clr=[255, 0, 0], hatch_size=2):
-        img[cx - hatch_size: cx + hatch_size + 1, cy] = np.array(clr)
-        img[cx, cy - hatch_size: cy + hatch_size + 1] = np.array(clr)
+    def drawHatch(img, cx, cy, clr=[0, 0, 255], hatch_size=2):
+        p0 = np.array([cx, cy], dtype=np.float32)
+        p1 = np.array([cx + 10, cy], dtype=np.float32)
+        cv2.line(img, tuple(p0), tuple(p1), (255, 0, 0))
+        img[cy - hatch_size: cy + hatch_size + 1, cx] = np.array(clr)
+        img[cy, cx - hatch_size: cx + hatch_size + 1] = np.array(clr)
 
     @staticmethod
     def fillRect(img, x0, x1, y0, y1, c):
@@ -96,15 +105,15 @@ class LK:
             return gradx, grady
 
         if method == 'simple':
-            kernel = np.array([[-1, 0, 1]], dtype='float') / 2
+            kernel = np.array([[-1, 0, 1]], dtype=np.float32) / 2
         elif method == 'sobel':
             kernel = np.array([[-1, 0, 1],
                                [-2, 0, 2],
-                               [-1, 0, 1]], dtype='float') / 8
+                               [-1, 0, 1]], dtype=np.float32) / 8
         elif method == 'scharr':
             kernel = np.array([[-3, 0, 3],
                                [-10, 0, 10],
-                               [-3, 0, 3]], dtype='float') / 32
+                               [-3, 0, 3]], dtype=np.float32) / 32
 
         gradx = cv2.filter2D(img, -1, kernel)
         grady = cv2.filter2D(img, -1, kernel.T)
@@ -140,11 +149,11 @@ class LK:
                 self.y += deltaX[1, 0]
                 print "Iter %d err: %.3f   lk: (%.3f, %.3f)" % (i, error, self.x, self.y)
 
-        elif self.method == 'cv':
-            lk_params = dict(winSize=self.winSize,
+        elif self.method == 'opencv':
+            lk_params = dict(winSize=(self.winSize, self.winSize),
                              maxLevel=self.maxLevel,
                              criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, self.count, self.err))
-            p0 = np.array([[[self.x, self.y]]], dtype='float32')
+            p0 = np.array([[[self.x, self.y]]], dtype=np.float32)
             p1, st, err = cv2.calcOpticalFlowPyrLK(self.lastImg, img, p0, **lk_params)
             self.x = p1[0, 0, 0]
             self.y = p1[0, 0, 1]
