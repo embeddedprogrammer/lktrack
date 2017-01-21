@@ -46,20 +46,24 @@ def overlay2(bg, fg, pt_fg, pt_bg, scale):
     img = overlayImg(bg, fg_warped)
     return img
 
+weights, thresh = LK.createThreshold(bg, fg)
+
 def genTrackAndShow(lktracker, x, y, size):
     # generate next frame
     img = overlay2(bg, fg, np.array([[fg.shape[1] / 2, fg.shape[0] / 2]], dtype=np.float32), np.array([[x, y]], dtype=np.float32), scale=size/fg.shape[0])
 
     # track
     if lktracker is None:
-        lktracker = LK(img, x, y, method='opencv')
+        lktracker = LK(img, x, y, method='lk_mask', weights=weights, thresh=thresh)
     else:
         lktracker.track(img)
 
         # display image
         disp = np.copy(img)
-        lktracker.drawHatch(disp, lktracker.x, lktracker.y, hatch_size=20)
+        #lktracker.drawHatch(disp, lktracker.x, lktracker.y, hatch_size=20)
+        lktracker.drawSquare(disp, lktracker.x, lktracker.y, winsize=lktracker.winSize)
         cv2.imshow('image', disp)
+
     return lktracker
 
 x = 100.

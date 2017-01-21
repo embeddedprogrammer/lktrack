@@ -6,7 +6,7 @@ from scipy import signal
 
 
 class LK:
-    def __init__(self, img, x, y, method='custom', gradientMethod='scharr', winSize=21, count=10, err=1e-4, maxLevel=0):
+    def __init__(self, img, x, y, method='custom', gradientMethod='scharr', winSize=21, count=10, err=1e-4, maxLevel=0, weights=None, thresh=None):
         self.lastImg = img
         self.x = x
         self.y = y
@@ -16,6 +16,8 @@ class LK:
         self.err = err
         self.winSize = winSize
         self.maxLevel = maxLevel
+        self.weights = weights
+        self.thresh = thresh
 
     @staticmethod
     def interpolate(img, x, y):
@@ -53,16 +55,11 @@ class LK:
         cv2.line(img, tuple(pt + right), tuple(pt - right), clr, lineType=cv2.CV_AA)
 
     @staticmethod
-    def fillRect(img, x0, x1, y0, y1, c):
-        img[y0:y1 + 1, x0:x1 + 1] = c
-
-    @staticmethod
-    def drawRect(img, x0, x1, y0, y1, c=[255, 0, 0]):
-        print x0, x1, y0, y1
-        LK.fillRect(img, x0, x0, y0, y1, c)
-        LK.fillRect(img, x1, x1, y0, y1, c)
-        LK.fillRect(img, x0, x1, y0, y0, c)
-        LK.fillRect(img, x0, x1, y1, y1, c)
+    def drawSquare(img, cx, cy, clr=[0, 0, 255], winsize=21):
+        pt = np.array([cx, cy], dtype=np.float32)
+        down = np.array([(winsize - 1) / 2, 0.], dtype=np.float32)
+        right = np.array([0., (winsize - 1) / 2], dtype=np.float32)
+        cv2.rectangle(img, tuple(pt - down - right), tuple(pt + down + right), clr, lineType=cv2.CV_AA)
 
     # Note: scipy.misc.imresize has a weird rounding problem. This makes
     # it not as nice for using 'nearest' interpolation, so we created our
@@ -119,12 +116,39 @@ class LK:
         grady = cv2.filter2D(img, -1, kernel.T)
         return gradx, grady
 
+    @staticmethod
+    def createThreshold(bg, fg):
+        bg_av = np.mean(np.mean(bg[:, :, :3], axis=0), axis=0)
+        fg_av = np.mean(np.mean(fg[:, :, :3], axis=0), axis=0)
+        overall_av = (fg_av + bg_av) / 2
+        gradient = fg_av - bg_av
+        weights = gradient.astype(dtype=np.float32) / np.sum(np.abs(gradient))
+        thresh = np.sum(overall_av * weights)
+        return weights, thresh
+
+    @staticmethod
+    def divThreshold(img, weights):
+        gray = np.sum(img * weights, axis=2)
+        gray2 = cv2.normalize(gray, norm_type=cv2.NORM_MINMAX)
+        return gray2
+
+    @staticmethod
+    def boolThreshold(img, weights, thresh):
+        gray = np.sum(img * weights, axis=2)
+        retval, bw = cv2.threshold(gray, thresh, 255, cv2.THRESH_BINARY)
+        return bw
+
+    @staticmethod
+    def maskThreshold(img, weights, thresh):
+        gray = np.sum(img * weights, axis=2)
+        return np.expand_dims(gray > thresh, axis=2)
+
     def track(self, img):
         if self.lastImg is None:
             self.lastImg = img
             return
 
-        if self.method == 'custom':
+        if self.method == 'lk':
             # Extract template image patch
             template = LK.cropImg(self.lastImg, self.x, self.y, self.winSize)
             dx, dy = LK.getGradient(template, method=self.gradientMethod)
@@ -140,7 +164,40 @@ class LK:
                 residual = np.reshape(template - croppedImg, (-1, 1))
                 error = np.linalg.norm(residual)
                 if error < self.err:
-                    print "Iter %d Terminate at err: %.3f" %(i, error)
+                    #print "Iter %d Terminate at err: %.3f" %(i, error)
+                    break
+
+                # Compute least-squares solution to linearized equation
+                deltaX = np.matmul(G_inv, np.matmul(J.T, residual))
+                self.x += deltaX[0, 0]
+                self.y += deltaX[1, 0]
+                #print "Iter %d err: %.3f   lk: (%.3f, %.3f)" % (i, error, self.x, self.y)
+
+        elif self.method == 'lk_mask':
+            # Extract template image patch
+            template = LK.cropImg(self.lastImg, self.x, self.y, self.winSize)
+            dx, dy = LK.getGradient(template, method=self.gradientMethod)
+            mask = LK.maskThreshold(template, self.weights, self.thresh)
+            dx *= mask
+            dy *= mask
+
+            # Precompute jacobian and inverse of grammian (these are constant)
+            J = np.concatenate((np.reshape(dx, (-1, 1)), np.reshape(dy, (-1, 1))), axis=1)
+            G_inv = np.linalg.inv(np.matmul(J.T, J))
+
+            # Iterative gauss-newton algorithm
+            for i in range(self.count):
+                # Extract patch from current image and compute error
+                croppedImg = LK.cropImg(img, self.x, self.y, 21)
+                mask = LK.maskThreshold(croppedImg, self.weights, self.thresh)
+                diff_masked = (template - croppedImg) * mask
+                if i == 0:
+                    cv2.imshow('mask', mask.astype(dtype=np.uint8)*255)
+
+                residual = np.reshape(diff_masked, (-1, 1))
+                error = np.linalg.norm(residual)
+                if error < self.err:
+                    #print "Iter %d Terminate at err: %.3f" %(i, error)
                     break
 
                 # Compute least-squares solution to linearized equation
