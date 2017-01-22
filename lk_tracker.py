@@ -6,8 +6,9 @@ from scipy import signal
 
 
 class LK:
-    def __init__(self, img, x, y, method='custom', gradientMethod='scharr', winSize=21, count=10, err=1e-4, maxLevel=0, weights=None, thresh=None):
+    def __init__(self, img, fg_mask, x, y, method='custom', gradientMethod='scharr', winSize=21, count=10, err=1e-4, maxLevel=0, weights=None, thresh=None):
         self.lastImg = img
+        self.lastMask = fg_mask
         self.x = x
         self.y = y
         self.method = method
@@ -143,7 +144,7 @@ class LK:
         gray = np.sum(img * weights, axis=2)
         return np.expand_dims(gray > thresh, axis=2)
 
-    def track(self, img):
+    def track(self, img, fg_mask):
         if self.lastImg is None:
             self.lastImg = img
             return
@@ -176,8 +177,44 @@ class LK:
         elif self.method == 'lk_mask':
             # Extract template image patch
             template = LK.cropImg(self.lastImg, self.x, self.y, self.winSize)
+            mask =    LK.cropImg(self.lastMask, self.x, self.y, self.winSize)
+            #mask = LK.maskThreshold(template, self.weights, self.thresh)
             dx, dy = LK.getGradient(template, method=self.gradientMethod)
-            mask = LK.maskThreshold(template, self.weights, self.thresh)
+            dx *= mask
+            dy *= mask
+
+            # Precompute jacobian and inverse of grammian (these are constant)
+            J = np.concatenate((np.reshape(dx, (-1, 1)), np.reshape(dy, (-1, 1))), axis=1)
+            G_inv = np.linalg.inv(np.matmul(J.T, J))
+
+            # Iterative gauss-newton algorithm
+            for i in range(self.count):
+                # Extract patch from current image and compute error
+                croppedImg = LK.cropImg(img, self.x, self.y, self.winSize)
+                mask =   LK.cropImg(fg_mask, self.x, self.y, self.winSize)
+                #mask = LK.maskThreshold(croppedImg, self.weights, self.thresh)
+                diff_masked = (template - croppedImg) * mask
+                if i == 0:
+                    cv2.imshow('mask', mask.astype(dtype=np.uint8)*255)
+
+                residual = np.reshape(diff_masked, (-1, 1))
+                error = np.linalg.norm(residual)
+                if error < self.err:
+                    #print "Iter %d Terminate at err: %.3f" %(i, error)
+                    break
+
+                # Compute least-squares solution to linearized equation
+                deltaX = np.matmul(G_inv, np.matmul(J.T, residual))
+                self.x += deltaX[0, 0]
+                self.y += deltaX[1, 0]
+                print "Iter %d err: %.3f   lk: (%.3f, %.3f)" % (i, error, self.x, self.y)
+
+        elif self.method == 'lk_mask2':
+            # Extract template image patch
+            template = LK.cropImg(self.lastImg, self.x, self.y, self.winSize)
+            mask =    LK.cropImg(self.lastMask, self.x, self.y, self.winSize)
+            # mask = LK.maskThreshold(template, self.weights, self.thresh)
+            dx, dy = LK.getGradient(template, method=self.gradientMethod)
             dx *= mask
             dy *= mask
 
@@ -189,7 +226,44 @@ class LK:
             for i in range(self.count):
                 # Extract patch from current image and compute error
                 croppedImg = LK.cropImg(img, self.x, self.y, 21)
-                #mask = LK.maskThreshold(croppedImg, self.weights, self.thresh) #Should we recalculate mask? A lot faster to use template mask
+                #mask = LK.maskThreshold(croppedImg, self.weights, self.thresh) #Faster to use template mask
+                diff_masked = (template - croppedImg) * mask
+                if i == 0:
+                    cv2.imshow('mask', mask.astype(dtype=np.uint8)*255)
+
+                residual = np.reshape(diff_masked, (-1, 1))
+                error = np.linalg.norm(residual)
+                if error < self.err:
+                    #print "Iter %d Terminate at err: %.3f" %(i, error)
+                    break
+
+                # Compute least-squares solution to linearized equation
+                deltaX = np.matmul(G_inv, np.matmul(J.T, residual))
+                self.x += deltaX[0, 0]
+                self.y += deltaX[1, 0]
+                print "Iter %d err: %.3f   lk: (%.3f, %.3f)" % (i, error, self.x, self.y)
+
+        elif self.method == 'lk_mask3':
+            # Extract template image patch
+            template = LK.cropImg(self.lastImg, self.x, self.y, self.winSize)
+            mask    = LK.cropImg(self.lastMask, self.x, self.y, self.winSize)
+            #mask = LK.maskThreshold(template, self.weights, self.thresh)
+
+            # Iterative gauss-newton algorithm
+            for i in range(self.count):
+                # Extract patch from current image
+                croppedImg = LK.cropImg(img, self.x, self.y, 21)
+
+                # Compute gradient of image
+                dx, dy = LK.getGradient(croppedImg, method=self.gradientMethod)
+                dx *= mask
+                dy *= mask
+
+                # Compute Jacobian and inverse of grammian
+                J = np.concatenate((np.reshape(dx, (-1, 1)), np.reshape(dy, (-1, 1))), axis=1)
+                G_inv = np.linalg.inv(np.matmul(J.T, J))
+
+                # Compute error (masked)
                 diff_masked = (template - croppedImg) * mask
                 if i == 0:
                     cv2.imshow('mask', mask.astype(dtype=np.uint8)*255)
@@ -216,4 +290,5 @@ class LK:
             self.y = p1[0, 0, 1]
 
         self.lastImg = img
+        self.lastMask = fg_mask
         return self.x, self.y

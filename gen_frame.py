@@ -12,13 +12,6 @@ key_up = 82
 key_right = 83
 key_down = 84
 
-# Load images
-bg = cv2.imread("imgs/forest.jpg")
-fg = cv2.imread("imgs/bat.png", cv2.IMREAD_UNCHANGED)
-
-fg = cv2.resize(fg, (0, 0), fx=.3, fy=.3)
-bg = cv2.resize(bg, (0, 0), fx=.3, fy=.3)
-
 global times
 times = []
 
@@ -46,17 +39,18 @@ def overlay2(bg, fg, pt_fg, pt_bg, scale):
     T = cv2.getPerspectiveTransform(pts_fg, pts_bg)
     fg_warped = cv2.warpPerspective(fg, T, (bg.shape[1], bg.shape[0]))
     img = overlayImg(bg, fg_warped)
-    return img
+    fg_mask = fg_warped[:, :, 3:4]
+    return img, fg_mask
 
 def genTrackAndShow(lktracker, x, y, size, method, weights, thresh, showFrame=True):
     # generate next frame
-    img = overlay2(bg, fg, np.array([[fg.shape[1] / 2, fg.shape[0] / 2]], dtype=np.float32), np.array([[x, y]], dtype=np.float32), scale=size/fg.shape[0])
+    img, fg_mask = overlay2(bg, fg, np.array([[fg.shape[1] / 2, fg.shape[0] / 2]], dtype=np.float32), np.array([[x, y]], dtype=np.float32), scale=size/fg.shape[0])
 
     # track
     if lktracker is None:
-        lktracker = LK(img, x, y, method=method, weights=weights, thresh=thresh)
+        lktracker = LK(img, fg_mask, x, y, method=method, weights=weights, thresh=thresh)
     else:
-        lktracker.track(img)
+        lktracker.track(img, fg_mask)
 
         # display image
         if showFrame:
@@ -98,13 +92,14 @@ def playWithTracker(fg, bg, method):
     cv2.destroyAllWindows()
 
 def testTracker(fg, bg, method):
-    weights, thresh = LK.createThreshold(bg, fg)
+    #weights, thresh = LK.createThreshold(bg, fg)
+    weights, thresh = (None, None)
     size = 20.
     lktracker = None
     cx = bg.shape[1] / 2
     cy = bg.shape[0] / 2
     radius = min(cx, cy) * 0.8
-    dist = 2.
+    dist = 3. #2.
     omega = dist/radius
     iters = 100
     err = np.zeros(iters, dtype=np.float32)
@@ -120,12 +115,27 @@ def testTracker(fg, bg, method):
     cv2.destroyAllWindows()
     return err, times
 
-methods = ['opencv', 'lk', 'lk_mask']
-for method in methods:
-    err, times = testTracker(fg, bg, method)
-    plt.plot(times, err)
-plt.legend(methods, loc='lower right')
-plt.xlabel('Time')
-plt.ylabel('Error (pixels)')
-plt.show()
+def testTrackers():
+    methods = ['opencv', 'lk_mask', 'lk_mask2', 'lk_mask3']
+    for method in methods:
+        err, times = testTracker(fg, bg, method)
+        plt.plot(times, err)
+    plt.legend(methods, loc='lower right')
+    plt.xlabel('Time')
+    plt.ylabel('Error (pixels)')
+    plt.show()
+
+# Load images
+#bg = cv2.imread("imgs/forest.jpg")
+#bg = cv2.imread("imgs/chess.jpg")
+bg = cv2.imread("imgs/noise.png")
+fg = cv2.imread("imgs/bat.png", cv2.IMREAD_UNCHANGED)
+
+ideal_width = 300.
+f_bg = ideal_width / bg.shape[1]
+fg = cv2.resize(fg, (0, 0), fx=.3, fy=.3)
+bg = cv2.resize(bg, (0, 0), fx=f_bg, fy=f_bg)
+
+#playWithTracker(fg, bg, 'lk_mask3')
+testTrackers()
 
