@@ -189,7 +189,7 @@ class LK:
             for i in range(self.count):
                 # Extract patch from current image and compute error
                 croppedImg = LK.cropImg(img, self.x, self.y, 21)
-                mask = LK.maskThreshold(croppedImg, self.weights, self.thresh)
+                #mask = LK.maskThreshold(croppedImg, self.weights, self.thresh) #Should we recalculate mask? A lot faster to use template mask
                 diff_masked = (template - croppedImg) * mask
                 if i == 0:
                     cv2.imshow('mask', mask.astype(dtype=np.uint8)*255)

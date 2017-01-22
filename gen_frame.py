@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 import time
 from lk_tracker import LK
+import math
+import matplotlib.pyplot as plt
 
 key_esc = 27
 key_esc = 27
@@ -46,52 +48,84 @@ def overlay2(bg, fg, pt_fg, pt_bg, scale):
     img = overlayImg(bg, fg_warped)
     return img
 
-weights, thresh = LK.createThreshold(bg, fg)
-
-def genTrackAndShow(lktracker, x, y, size):
+def genTrackAndShow(lktracker, x, y, size, method, weights, thresh, showFrame=True):
     # generate next frame
     img = overlay2(bg, fg, np.array([[fg.shape[1] / 2, fg.shape[0] / 2]], dtype=np.float32), np.array([[x, y]], dtype=np.float32), scale=size/fg.shape[0])
 
     # track
     if lktracker is None:
-        lktracker = LK(img, x, y, method='lk_mask', weights=weights, thresh=thresh)
+        lktracker = LK(img, x, y, method=method, weights=weights, thresh=thresh)
     else:
         lktracker.track(img)
 
         # display image
-        disp = np.copy(img)
-        #lktracker.drawHatch(disp, lktracker.x, lktracker.y, hatch_size=20)
-        lktracker.drawSquare(disp, lktracker.x, lktracker.y, winsize=lktracker.winSize)
-        cv2.imshow('image', disp)
+        if showFrame:
+            disp = np.copy(img)
+            #lktracker.drawHatch(disp, lktracker.x, lktracker.y, hatch_size=20)
+            lktracker.drawSquare(disp, lktracker.x, lktracker.y, winsize=lktracker.winSize)
+            cv2.imshow('image', disp)
 
     return lktracker
 
-x = 100.
-y = 100.
-dist = 1.
-size = 20.
-lktracker = genTrackAndShow(None, x, y, size)
+def playWithTracker(fg, bg, method):
+    weights, thresh = LK.createThreshold(bg, fg)
 
-while True:
-    key = cv2.waitKey(0) & 0xff
-    if key == key_esc or key == ord('q'):
-        break
-    elif key == key_left:
-        x -= dist
-    elif key == key_right:
-        x += dist
-    elif key == key_up:
-        y -= dist
-    elif key == key_down:
-        y += dist
-    elif key == ord('+'):
-        size += 1
-    elif key == ord('-'):
-        size -= 1
-    else:
-        print key
-    lktracker = genTrackAndShow(lktracker, x, y, size)
+    x = 100.
+    y = 100.
+    dist = 1.
+    size = 20.
+    lktracker = genTrackAndShow(None, x, y, size, method, weights, thresh)
 
-cv2.destroyAllWindows()
+    while True:
+        key = cv2.waitKey(0) & 0xff
+        if key == key_esc or key == ord('q'):
+            break
+        elif key == key_left:
+            x -= dist
+        elif key == key_right:
+            x += dist
+        elif key == key_up:
+            y -= dist
+        elif key == key_down:
+            y += dist
+        elif key == ord('+'):
+            size += 1
+        elif key == ord('-'):
+            size -= 1
+        else:
+            print key
+        lktracker = genTrackAndShow(lktracker, x, y, size, method, weights, thresh)
+    cv2.destroyAllWindows()
 
+def testTracker(fg, bg, method):
+    weights, thresh = LK.createThreshold(bg, fg)
+    size = 20.
+    lktracker = None
+    cx = bg.shape[1] / 2
+    cy = bg.shape[0] / 2
+    radius = min(cx, cy) * 0.8
+    dist = 2.
+    omega = dist/radius
+    iters = 100
+    err = np.zeros(iters, dtype=np.float32)
+    times = np.arange(iters)
+    for t in range(iters):
+        x = cx + math.cos(omega*t) * radius
+        y = cy + math.sin(omega*t) * radius
+        lktracker = genTrackAndShow(lktracker, x, y, size, method, weights, thresh)
+        dx = lktracker.x - x
+        dy = lktracker.y - y
+        err[t] = math.sqrt(dx*dx + dy*dy)
+        cv2.waitKey(10)
+    cv2.destroyAllWindows()
+    return err, times
+
+methods = ['opencv', 'lk', 'lk_mask']
+for method in methods:
+    err, times = testTracker(fg, bg, method)
+    plt.plot(times, err)
+plt.legend(methods, loc='lower right')
+plt.xlabel('Time')
+plt.ylabel('Error (pixels)')
+plt.show()
 
